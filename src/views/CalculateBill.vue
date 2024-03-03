@@ -23,10 +23,10 @@ ChartJS.register(
 )
 
 class UnitPrice {
-    base: number = 90
-    elecs: { cost: number, bg: number }[] = [{ cost: 10, bg: 0 }, { cost: 0, bg: 120 }]
-    fuel: number = 0
-    reEnergy: number = 0
+    base: number = 500
+    elecs: { cost: number, lt: number }[] = [{ cost: 28, lt: 120 }, { cost: 60, lt: 240 }]
+    fuel: number = 5
+    reEnergy: number = 2
 }
 
 function* range(begin: number, end: number, interval: number = 1) {
@@ -36,40 +36,41 @@ function* range(begin: number, end: number, interval: number = 1) {
 }
 
 
-// 配列変数に格納
-var usage: number[] = [...range(0, 150, 5)]
-
 const cost = ref<UnitPrice>(new UnitPrice())
+// 配列変数に格納
+// 電気使用料 必ず0からスタート
+const usage = ref<number[]>([...range(0, cost.value.elecs[cost.value.elecs.length - 1].lt, 2)])
+
+
+// 各段階における料金の計算式
+const eachStageFuncs = computed<Function[]>(() => {
+    const funcs : Function[] = []
+    const _c = cost.value
+    // ベースとなる最初の式
+    const f0 = (x : number) => {return (_c.fuel + _c.reEnergy + _c.elecs[0].cost) * x + _c.base }
+    funcs.push(f0)
+    for (let i = 1; i < _c.elecs.length; i++) {
+        // Fn = a(x - thodhhold) + F{n-1}
+        const fi = (x: number) => {
+            return (_c.fuel + _c.reEnergy + _c.elecs[i].cost) * (x - _c.elecs[i - 1].lt) + funcs[i - 1](_c.elecs[i - 1].lt)
+        }
+        funcs.push(fi)
+    }
+    return funcs
+})
 
 const price = computed<number[]>(() => {
     const _c = cost.value
-    return usage.map(x => {
-        let tmp = _c.base + (_c.fuel + _c.reEnergy) * x
-        
-        for (let i = 0; i < _c.elecs.length - 1; i++) {
-            if (_c.elecs[i].bg <= x && x < _c.elecs[i + 1].bg) {
-                tmp += _c.elecs[i].cost * x
+    return usage.value.map(x => {
+        // 電気使用料の最大値の小さい順でループ
+        for (let i = 0; i < _c.elecs.length; i++) {
+            // xの値が電気料金の範囲内のに最初に入った時にforを抜ける
+            if (x <= _c.elecs[i].lt) {
+                return eachStageFuncs.value[i](x)
             }
         }
-        
-        if (_c.elecs[_c.elecs.length-1].bg <= x) {
-            tmp += _c.elecs[_c.elecs.length-1].cost * x
-        }
-        
-        return tmp
     })
 })
-
-const data = {
-    labels: usage,
-    datasets: [
-        {
-            label: 'Data One',
-            backgroundColor: '#f87979',
-            data: price.value
-        }
-    ]
-}
 
 const options = {
     responsive: false,
@@ -78,7 +79,7 @@ const options = {
 
 const chartData = computed(() => {
     return {
-        labels: usage,
+        labels: usage.value,
         datasets: [
             {
                 label: 'Data One',
@@ -108,7 +109,7 @@ const chartData = computed(() => {
                 </tr>
                 <tr v-for="_, i in cost.elecs" :key="i">
                     <th scope="row"><label for="ele-cost">電気料金{{ i + 1 }}段階目<input
-                                v-model="cost.elecs[i].bg" />以上</label></th>
+                                v-model="cost.elecs[i].lt" />まで</label></th>
                     <td><input v-model="cost.elecs[i].cost" id="elec-cost" type="number" /></td>
                 </tr>
                 <tr>
